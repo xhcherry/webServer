@@ -2,9 +2,11 @@
 #define THREADPOOL_H
 #include <pthread.h>
 #include <semaphore.h>
+
 #include <exception>
 #include <iostream>
 #include <list>
+
 #include "locker.h"
 // 线程池类，定义成模板类为了代码的复用，模板参数T是任务类
 template <class T>
@@ -48,10 +50,9 @@ threadpool<T>::threadpool(int thread_number, int max_requests)
         throw std::exception();
     }
     // 创建thread_number个线程，并将它们设置为线程脱离（我们不能让父线程释放资源）
-    for (int i = 0; i < thread_number, i++) {
+    for (int i = 0; i < thread_number; i++) {
         std::cout << "create the " << i << "th thread" << std::endl;
-        if (pthread_create(m_threads + i, nullptr, worker, nullptr, this) !=
-            0) {
+        if (pthread_create(m_threads + i, nullptr, worker, this) != 0) {
             delete[] m_threads;
             throw std::exception();
         }
