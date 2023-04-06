@@ -62,10 +62,10 @@ int main(int argc, char* argv[]) {
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(port);
-    bind(listenfd, (struct sockaddr*)&address, sizeof(address));
+    ret = bind(listenfd, (struct sockaddr*)&address, sizeof(address));
     // 监听
-    listen(listenfd, 5);
-    // 创建epoll对象，事件数组，，添加
+    ret = listen(listenfd, 5);
+    // 创建epoll对象，事件数组，添加
     epoll_event events[MAX_EVENT_NUMBER];
     int epollfd = epoll_create(5);
     // 将监听的文件描述符添加到epoll对象中
