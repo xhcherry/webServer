@@ -19,7 +19,7 @@ const char* doc_root = "/root/webserver/webServer/resources";
 // 所有socket上的事件都被注册到同一个epoll内核事件中，所以设置成静态的
 int http_conn::m_epollfd = -1;
 // 所有的客户数
-int http_conn::m_user_count=0;
+int http_conn::m_user_count = 0;
 // 设置文件描述符非阻塞
 void setnonblocking(int fd) {
     int old_flag = fcntl(fd, F_GETFL);
@@ -72,6 +72,8 @@ void http_conn::init() {
     m_url = 0;
     m_version = 0;
     m_linger = false;
+    bytes_to_send = 0;
+    bytes_have_send = 0;
     bzero(m_read_buf, READ_BUFFER_SIZE);
 }
 // 关闭连接
@@ -108,8 +110,54 @@ bool http_conn::read() {
     return true;
 }
 bool http_conn::write() {
-    std::cout << "一次性写完数据" << std::endl;
-    return true;
+    int temp = 0;
+
+    if (bytes_to_send == 0) {
+        // 将要发送的字节为0，这一次响应结束。
+        modfd(m_epollfd, m_sockfd, EPOLLIN);
+        init();
+        return true;
+    }
+
+    while (1) {
+        // 分散写
+        temp = writev(m_sockfd, m_iv, m_iv_count);
+        if (temp <= -1) {
+            // 如果TCP写缓冲没有空间，则等待下一轮EPOLLOUT事件，虽然在此期间，
+            // 服务器无法立即接收到同一客户的下一个请求，但可以保证连接的完整性。
+            if (errno == EAGAIN) {
+                modfd(m_epollfd, m_sockfd, EPOLLOUT);
+                return true;
+            }
+            unmap();
+            return false;
+        }
+
+        bytes_have_send += temp;
+        bytes_to_send -= temp;
+
+        if (bytes_have_send >= m_iv[0].iov_len) {
+            m_iv[0].iov_len = 0;
+            m_iv[1].iov_base = m_file_address + (bytes_have_send - m_write_idx);
+            m_iv[1].iov_len = bytes_to_send;
+        } else {
+            m_iv[0].iov_base = m_write_buf + bytes_have_send;
+            m_iv[0].iov_len = m_iv[0].iov_len - temp;
+        }
+
+        if (bytes_to_send <= 0) {
+            // 没有数据要发送了
+            unmap();
+            modfd(m_epollfd, m_sockfd, EPOLLIN);
+
+            if (m_linger) {
+                init();
+                return true;
+            } else {
+                return false;
+            }
+        }
+    }
 }
 // 主状态机，解析请求
 http_conn::HTTP_CODE http_conn::process_read() {
